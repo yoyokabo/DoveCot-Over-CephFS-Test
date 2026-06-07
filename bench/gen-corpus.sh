@@ -26,9 +26,9 @@ rand_body() {  # $1 = approx size in bytes — emit ~that many bytes of text
 for i in $(seq 1 "${N}"); do
   # 1 in 5 messages is "large", else "small".
   if (( i % 5 == 0 )); then
-    size=$(( (RANDOM % 1992 + 50) * 1024 ))    # 50 KB .. ~2 MB
+    size=$(( (RANDOM % 462 + 50) * 1024 ))     # 50 KB .. ~512 KB (large)
   else
-    size=$(( (RANDOM % 19 + 1) * 1024 ))       # 1 KB .. 20 KB
+    size=$(( (RANDOM % 19 + 1) * 1024 ))       # 1 KB .. 20 KB (small)
   fi
   {
     echo "From sender@bench.local Thu Jan  1 00:00:00 2026"

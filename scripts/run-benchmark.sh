@@ -31,15 +31,16 @@ mkdir -p "${RESULTS}"
 echo "==> benchmark run ${STAMP}: formats='${FORMATS}' clients='${CLIENTS_SWEEP}' secs=${SECS}"
 
 wait_dovecot() {
-  docker exec bench bash -c 'for i in $(seq 1 120); do (exec 3<>/dev/tcp/dovecot/143) 2>/dev/null && exit 0; sleep 1; done; exit 1' \
+  docker exec bench bash -c 'for i in $(seq 1 180); do (exec 3<>/dev/tcp/dovecot/143) 2>/dev/null && exit 0; sleep 1; done; exit 1' \
     && echo "   dovecot IMAP ready" || { echo "   ERROR: dovecot did not come up"; exit 1; }
 }
 
 for fmt in ${FORMATS}; do
   echo "==> format: ${fmt} — (re)starting Dovecot"
-  MAIL_FORMAT="${fmt}" $DC --profile mail up -d dovecot >/dev/null
-  # Restart picks up the new MAIL_FORMAT; give the container a moment to exec.
-  $DC restart dovecot >/dev/null
+  # --force-recreate makes the new MAIL_FORMAT env take effect in a SINGLE
+  # clean start (an extra `restart` here would kill the container mid ceph-fuse
+  # mount and wedge it).
+  MAIL_FORMAT="${fmt}" $DC --profile mail up -d --force-recreate dovecot >/dev/null
   wait_dovecot
 
   outdir="${RESULTS}/${fmt}"
