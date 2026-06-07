@@ -228,6 +228,11 @@ services:
     hostname: dovecot
     container_name: dovecot
     env_file: .env
+    # Lets the benchmark switch mail formats between runs without editing .env:
+    #   MAIL_FORMAT=maildir docker compose up -d dovecot
+    # (an `environment:` entry overrides the same key from env_file).
+    environment:
+      MAIL_FORMAT: "${MAIL_FORMAT:-mdbox}"
     profiles: ["mail"]
     # ceph-fuse needs the FUSE device and admin capability to mount.
     devices: ["/dev/fuse"]
