@@ -43,4 +43,20 @@ fi
 
 echo "[apply-crush] CRUSH rules:"
 ceph osd crush rule ls
+
+# --- recovery tuning --------------------------------------------------------
+# By default a DOWN OSD is kept "in" for 600s (mon_osd_down_out_interval) before
+# Ceph marks it out and re-replicates. For the OSD-down chaos test we want to
+# observe AUTOMATIC self-heal quickly, so shorten it to 30s. (On a real cluster
+# you'd keep this high to avoid needless backfill on brief blips.)
+ceph config set mon mon_osd_down_out_interval 30
+echo "[apply-crush] mon_osd_down_out_interval set to 30s (fast self-heal demo)"
+
+# CRITICAL for this topology: with 1 OSD per rack, losing an OSD == losing a
+# whole RACK. Ceph's default mon_osd_down_out_subtree_limit=rack would then
+# REFUSE to auto-mark-out the OSD (it assumes a rack outage is temporary and
+# avoids massive rebalancing), so no self-heal. We raise the limit to 'root' so
+# a rack(=host=osd) failure IS auto-outed and re-replicated onto the spare rack.
+ceph config set mon mon_osd_down_out_subtree_limit root
+echo "[apply-crush] mon_osd_down_out_subtree_limit set to root (enable rack self-heal)"
 echo "[apply-crush] done."
