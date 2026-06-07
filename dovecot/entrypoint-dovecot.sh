@@ -62,17 +62,29 @@ lock_method = dotlock
 EOF
 
 # --- 3. Generate test accounts + home dirs ----------------------------------
-log "generating ${USERS} test accounts + the named test user"
+# The passwd-file is container-local, so we always regenerate it (fast). The
+# per-user home dirs live on CephFS and persist across restarts; creating 100+
+# of them is slow over FUSE (a metadata round-trip each), so we skip that step
+# when a provisioning marker for this user count already exists on CephFS.
+MARKER="${MOUNT}/.provisioned-${USERS}"
+MAKE_DIRS=1
+[[ -f "${MARKER}" ]] && { MAKE_DIRS=0; log "home dirs already provisioned (${MARKER}); skipping mkdir"; }
+
+log "generating ${USERS} test accounts + the named test user (mkdir=${MAKE_DIRS})"
 : > /etc/dovecot/users
 emit_user() {
   local u="$1"
   echo "${u}:{PLAIN}${PASS}:5000:5000::/srv/mail/${u}::" >> /etc/dovecot/users
-  install -d -o vmail -g vmail "${MOUNT}/${u}"
+  [[ "${MAKE_DIRS}" == "1" ]] && install -d -o vmail -g vmail "${MOUNT}/${u}"
 }
 for i in $(seq 1 "${USERS}"); do
   emit_user "$(printf 'user%04d' "${i}")"
 done
 emit_user "${MAIL_TEST_USER:-user}"
+[[ "${MAKE_DIRS}" == "1" ]] && touch "${MARKER}"
+# The Dovecot auth process runs as the unprivileged 'dovecot' user, so the
+# passwd-file must be group-readable by it. Lab only (plaintext passwords).
+chown root:dovecot /etc/dovecot/users
 chmod 640 /etc/dovecot/users
 
 # --- 4. Run Dovecot ---------------------------------------------------------

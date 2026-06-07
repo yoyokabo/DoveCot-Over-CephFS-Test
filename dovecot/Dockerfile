@@ -22,8 +22,15 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 RUN groupadd -g 5000 vmail && \
     useradd  -u 5000 -g 5000 -d /srv/mail -s /sbin/nologin vmail
 
+# The dnf package drops a stock dovecot.conf + a large conf.d/ tree (SSL cert
+# requirements, a default mail_location, sample namespaces, ...). We take full
+# control instead: wipe the stock config so ONLY our heavily-commented files
+# are in effect and nothing silently overrides mail_location.
+RUN rm -f /etc/dovecot/dovecot.conf /etc/dovecot/conf.d/*.conf
+
 # Static Dovecot config (protocol-independent bits). The mail_location is
-# generated at runtime from $MAIL_FORMAT by the entrypoint.
+# generated at runtime from $MAIL_FORMAT by the entrypoint into
+# conf.d/01-mail-location.conf.
 COPY dovecot.conf /etc/dovecot/dovecot.conf
 COPY conf.d/ /etc/dovecot/conf.d/
 
