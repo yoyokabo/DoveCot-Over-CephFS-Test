@@ -1,0 +1,14 @@
+# Benchmark outputs (regenerated every run) — keep the dir, ignore contents
+results/*
+!results/.gitkeep
+
+# Ceph daemon state created at runtime (keyrings, monmaps, OSD block files).
+# These live on named docker volumes by default, but ignore any local copies.
+ceph/runtime/
+*.keyring
+*.monmap
+block
+
+# Editor / OS noise
+*.swp
+.DS_Store

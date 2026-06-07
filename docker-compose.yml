@@ -1,0 +1,258 @@
+# =============================================================================
+# docker-compose.yml — the whole lab in one file.
+#
+# Layout (each "rack" is a CRUSH location label, simulated by separate
+# containers on one docker network with STATIC IPs):
+#
+#   monitors  : mon1 (.11, primary/bootstrap), mon2 (.12), mon3 (.13)
+#   managers  : mgr-a (.21, active), mgr-b (.22, standby)
+#   OSDs      : osd1..osd4 (.31-.34), one per rack1..rack4
+#   metadata  : mds-a (.41, active), mds-b (.42, standby)
+#   toolbox   : (.60) always-on admin shell with the ceph CLI + admin keyring
+#   dovecot   : (.51) ceph-fuse mount of CephFS + Dovecot  [profile: mail]
+#   bench     : (.61) imaptest load generator                [profile: mail]
+#
+# Volumes: one SHARED `etc-ceph` (cluster config + admin keyring, the bootstrap
+# rendezvous) plus one PERSISTENT data volume per daemon so a stopped daemon
+# keeps its state and rejoins on restart (required for the chaos tests).
+# =============================================================================
+
+# Common settings shared by every Ceph daemon container.
+x-ceph-common: &ceph-common
+  image: ${CEPH_IMAGE}
+  env_file: .env                       # inject cluster vars (fsid, IPs, ...) into the container
+  restart: "no"                        # we control start/stop explicitly for chaos tests
+  volumes:
+    - etc-ceph:/etc/ceph               # SHARED cluster config + keyrings
+    - ./ceph:/opt/ceph-scripts:ro      # entrypoints + lib.sh + apply-crush.sh
+
+networks:
+  cephnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+
+volumes:
+  etc-ceph:
+  mon1-data:
+  mon2-data:
+  mon3-data:
+  mgr-a-data:
+  mgr-b-data:
+  osd1-data:
+  osd2-data:
+  osd3-data:
+  osd4-data:
+  mds-a-data:
+  mds-b-data:
+  mail-data:        # Dovecot index/state that we keep OFF CephFS if desired
+
+services:
+  # ------------------------------- MONITORS ---------------------------------
+  mon1:
+    <<: *ceph-common
+    hostname: mon1
+    container_name: mon1
+    environment: { MON_ID: mon1, MON_PRIMARY: "1" }   # the bootstrapping monitor
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mon1-data:/var/lib/ceph/mon
+    command: ["/opt/ceph-scripts/entrypoint-mon.sh"]
+    networks: { cephnet: { ipv4_address: 172.28.0.11 } }
+
+  mon2:
+    <<: *ceph-common
+    hostname: mon2
+    container_name: mon2
+    environment: { MON_ID: mon2 }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mon2-data:/var/lib/ceph/mon
+    command: ["/opt/ceph-scripts/entrypoint-mon.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.12 } }
+
+  mon3:
+    <<: *ceph-common
+    hostname: mon3
+    container_name: mon3
+    environment: { MON_ID: mon3 }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mon3-data:/var/lib/ceph/mon
+    command: ["/opt/ceph-scripts/entrypoint-mon.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.13 } }
+
+  # ------------------------------- MANAGERS ---------------------------------
+  mgr-a:
+    <<: *ceph-common
+    hostname: mgr-a
+    container_name: mgr-a
+    environment: { MGR_ID: mgr-a }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mgr-a-data:/var/lib/ceph/mgr
+    command: ["/opt/ceph-scripts/entrypoint-mgr.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.21 } }
+
+  mgr-b:
+    <<: *ceph-common
+    hostname: mgr-b
+    container_name: mgr-b
+    environment: { MGR_ID: mgr-b }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mgr-b-data:/var/lib/ceph/mgr
+    command: ["/opt/ceph-scripts/entrypoint-mgr.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.22 } }
+
+  # --------------------------------- OSDs -----------------------------------
+  # One OSD per rack. OSD_RACK drives the --crush-location so each lands in a
+  # distinct CRUSH rack bucket.
+  osd1:
+    <<: *ceph-common
+    hostname: osd1
+    container_name: osd1
+    environment: { OSD_RACK: "1" }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - osd1-data:/var/lib/ceph/osd
+    command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.31 } }
+
+  osd2:
+    <<: *ceph-common
+    hostname: osd2
+    container_name: osd2
+    environment: { OSD_RACK: "2" }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - osd2-data:/var/lib/ceph/osd
+    command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.32 } }
+
+  osd3:
+    <<: *ceph-common
+    hostname: osd3
+    container_name: osd3
+    environment: { OSD_RACK: "3" }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - osd3-data:/var/lib/ceph/osd
+    command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.33 } }
+
+  osd4:
+    <<: *ceph-common
+    hostname: osd4
+    container_name: osd4
+    environment: { OSD_RACK: "4" }       # the spare rack that enables self-heal
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - osd4-data:/var/lib/ceph/osd
+    command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.34 } }
+
+  # ------------------------------ METADATA ----------------------------------
+  mds-a:
+    <<: *ceph-common
+    hostname: mds-a
+    container_name: mds-a
+    environment: { MDS_ID: mds-a }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mds-a-data:/var/lib/ceph/mds
+    command: ["/opt/ceph-scripts/entrypoint-mds.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.41 } }
+
+  mds-b:
+    <<: *ceph-common
+    hostname: mds-b
+    container_name: mds-b
+    environment: { MDS_ID: mds-b }
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - mds-b-data:/var/lib/ceph/mds
+    command: ["/opt/ceph-scripts/entrypoint-mds.sh"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.42 } }
+
+  # ------------------------------- TOOLBOX ----------------------------------
+  # An always-on container with the ceph CLI + admin keyring. We run all the
+  # init scripts (apply-crush, create-pools, create-fs) and all ceph queries
+  # through here via `docker compose exec toolbox ...`.
+  toolbox:
+    <<: *ceph-common
+    hostname: toolbox
+    container_name: toolbox
+    volumes:
+      - etc-ceph:/etc/ceph
+      - ./ceph:/opt/ceph-scripts:ro
+      - ./scripts:/opt/scripts:ro
+      - ./results:/results
+    entrypoint: ["/bin/bash", "-c", "sleep infinity"]
+    depends_on: [mon1]
+    networks: { cephnet: { ipv4_address: 172.28.0.60 } }
+
+  # ------------------------------- DOVECOT ----------------------------------
+  # Built image = ceph image + ceph-fuse + dovecot. Mounts CephFS via FUSE and
+  # serves IMAP/LMTP. Only started (profile "mail") after CephFS exists.
+  dovecot:
+    build:
+      context: ./dovecot
+      args: { CEPH_IMAGE: "${CEPH_IMAGE}" }
+    image: cephbench/dovecot:latest
+    hostname: dovecot
+    container_name: dovecot
+    env_file: .env
+    profiles: ["mail"]
+    # ceph-fuse needs the FUSE device and admin capability to mount.
+    devices: ["/dev/fuse"]
+    cap_add: ["SYS_ADMIN"]
+    security_opt: ["apparmor:unconfined"]
+    volumes:
+      - etc-ceph:/etc/ceph:ro          # read admin keyring + ceph.conf for the mount
+      - ./dovecot:/opt/dovecot-scripts:ro
+      - mail-data:/var/lib/dovecot
+    command: ["/opt/dovecot-scripts/entrypoint-dovecot.sh"]
+    depends_on: [toolbox]
+    networks: { cephnet: { ipv4_address: 172.28.0.51 } }
+
+  # -------------------------------- BENCH -----------------------------------
+  bench:
+    build:
+      context: ./bench
+      args: { CEPH_IMAGE: "${CEPH_IMAGE}" }
+    image: cephbench/bench:latest
+    hostname: bench
+    container_name: bench
+    env_file: .env
+    profiles: ["mail"]
+    volumes:
+      - etc-ceph:/etc/ceph:ro
+      - ./bench:/opt/bench:ro
+      - ./results:/results
+    entrypoint: ["/bin/bash", "-c", "sleep infinity"]
+    depends_on: [dovecot]
+    networks: { cephnet: { ipv4_address: 172.28.0.61 } }
