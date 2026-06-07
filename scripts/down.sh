@@ -16,6 +16,9 @@ DC="docker compose"
 if [[ "${1:-}" == "--wipe" ]]; then
   echo "==> stopping and removing containers + volumes (full reset)"
   $DC --profile mail down -v --remove-orphans
+  # OSD data lives in host RAM under /dev/shm (bind-mounted); clear it too.
+  echo "==> clearing RAM-backed OSD data in /dev/shm/ceph-osd*"
+  rm -rf /dev/shm/ceph-osd1 /dev/shm/ceph-osd2 /dev/shm/ceph-osd3 /dev/shm/ceph-osd4
 else
   echo "==> stopping and removing containers (keeping data volumes)"
   $DC --profile mail down --remove-orphans

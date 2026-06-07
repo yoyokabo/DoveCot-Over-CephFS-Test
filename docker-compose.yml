@@ -41,10 +41,9 @@ volumes:
   mon3-data:
   mgr-a-data:
   mgr-b-data:
-  osd1-data:
-  osd2-data:
-  osd3-data:
-  osd4-data:
+  # OSD data is RAM-backed via /dev/shm bind mounts (see osd* services), so no
+  # named volumes for OSDs. (To benchmark the HDD instead, re-add osd1-data..
+  # osd4-data here and point the osd* services at them.)
   mds-a-data:
   mds-b-data:
   mail-data:        # Dovecot index/state that we keep OFF CephFS if desired
@@ -127,7 +126,10 @@ services:
     volumes:
       - etc-ceph:/etc/ceph
       - ./ceph:/opt/ceph-scripts:ro
-      - osd1-data:/var/lib/ceph/osd
+      # RAM-backed OSD data (see .env). Host /dev/shm persists across container
+      # restarts, so the OSD-down chaos test reuses this data on restart.
+      # To benchmark the real HDD instead, swap this for:  osd1-data:/var/lib/ceph/osd
+      - /dev/shm/ceph-osd1:/var/lib/ceph/osd
     command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
     depends_on: [mon1]
     networks: { cephnet: { ipv4_address: 172.28.0.31 } }
@@ -140,7 +142,7 @@ services:
     volumes:
       - etc-ceph:/etc/ceph
       - ./ceph:/opt/ceph-scripts:ro
-      - osd2-data:/var/lib/ceph/osd
+      - /dev/shm/ceph-osd2:/var/lib/ceph/osd
     command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
     depends_on: [mon1]
     networks: { cephnet: { ipv4_address: 172.28.0.32 } }
@@ -153,7 +155,7 @@ services:
     volumes:
       - etc-ceph:/etc/ceph
       - ./ceph:/opt/ceph-scripts:ro
-      - osd3-data:/var/lib/ceph/osd
+      - /dev/shm/ceph-osd3:/var/lib/ceph/osd
     command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
     depends_on: [mon1]
     networks: { cephnet: { ipv4_address: 172.28.0.33 } }
@@ -166,7 +168,7 @@ services:
     volumes:
       - etc-ceph:/etc/ceph
       - ./ceph:/opt/ceph-scripts:ro
-      - osd4-data:/var/lib/ceph/osd
+      - /dev/shm/ceph-osd4:/var/lib/ceph/osd
     command: ["/opt/ceph-scripts/entrypoint-osd.sh"]
     depends_on: [mon1]
     networks: { cephnet: { ipv4_address: 172.28.0.34 } }

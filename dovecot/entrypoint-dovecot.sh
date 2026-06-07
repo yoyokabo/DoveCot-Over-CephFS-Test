@@ -52,13 +52,18 @@ mail_location = ${LOCATION}
 mail_uid = vmail
 mail_gid = vmail
 first_valid_uid = 5000
-# CephFS via FUSE does not support some locking primitives the same way a local
-# FS does; dotlock/fcntl is the safe choice over a network filesystem.
+
+# --- CephFS tuning ----------------------------------------------------------
+# A SINGLE Dovecot instance mounts CephFS here, and ceph-fuse provides a
+# coherent, cap-based cache plus working POSIX (fcntl) locks. So:
+#   * use fcntl locking (ceph-fuse supports it; far cheaper than dotlock)
+#   * do NOT enable mail_nfs_storage/mail_nfs_index — those force expensive
+#     index/cache invalidation meant for NFS and cause multi-second stalls on
+#     CephFS for no benefit with a single backend.
+#   * keep mail_fsync=always so APPEND latency reflects a durable write
+#     (a fair, honest measurement of the storage path).
+lock_method = fcntl
 mail_fsync = always
-mmap_disable = yes
-mail_nfs_storage = yes
-mail_nfs_index = yes
-lock_method = dotlock
 EOF
 
 # --- 3. Generate test accounts + home dirs ----------------------------------
@@ -68,20 +73,29 @@ EOF
 # when a provisioning marker for this user count already exists on CephFS.
 MARKER="${MOUNT}/.provisioned-${USERS}"
 MAKE_DIRS=1
-[[ -f "${MARKER}" ]] && { MAKE_DIRS=0; log "home dirs already provisioned (${MARKER}); skipping mkdir"; }
+if [[ -f "${MARKER}" ]]; then
+  MAKE_DIRS=0
+  log "home dirs already provisioned (${MARKER}); skipping mkdir"
+fi
 
 log "generating ${USERS} test accounts + the named test user (mkdir=${MAKE_DIRS})"
 : > /etc/dovecot/users
+# NOTE: use explicit if/then (not `cond && action`) so a false condition can't
+# return non-zero and trip `set -e` and skip the rest of startup.
 emit_user() {
   local u="$1"
   echo "${u}:{PLAIN}${PASS}:5000:5000::/srv/mail/${u}::" >> /etc/dovecot/users
-  [[ "${MAKE_DIRS}" == "1" ]] && install -d -o vmail -g vmail "${MOUNT}/${u}"
+  if [[ "${MAKE_DIRS}" == "1" ]]; then
+    install -d -o vmail -g vmail "${MOUNT}/${u}"
+  fi
 }
 for i in $(seq 1 "${USERS}"); do
   emit_user "$(printf 'user%04d' "${i}")"
 done
 emit_user "${MAIL_TEST_USER:-user}"
-[[ "${MAKE_DIRS}" == "1" ]] && touch "${MARKER}"
+if [[ "${MAKE_DIRS}" == "1" ]]; then
+  touch "${MARKER}"
+fi
 # The Dovecot auth process runs as the unprivileged 'dovecot' user, so the
 # passwd-file must be group-readable by it. Lab only (plaintext passwords).
 chown root:dovecot /etc/dovecot/users
