@@ -1,0 +1,39 @@
+### osd-down  (results/chaos/20260607-220540-osd-down-osd2)
+1780859140 22:05:40 START osd-down-osd2 (clients=100)
+1780859140 22:05:40 LOAD START imaptest clients=100 for 200s
+1780859150 22:05:50 INJECT  docker compose stop osd2 (lose one rack's replica)
+1780859200 22:06:40 RECOVERED PGs active+clean (49 pgs: 49 active+clean; 2.4 GiB data, 10 GiB used, 7.5 GiB / 18 GiB avail; 407 KiB/s rd, 4.0 MiB/s wr, 739 op/s)
+1780859200 22:06:40 RESTORE docker compose start osd2
+1780859202 22:06:42 RECOVERED HEALTH_OK
+1780859222 22:07:02 STOP
+
+### mon-failover  (results/chaos/20260607-220901-mon-failover-mon1)
+1780859341 22:09:01 START mon-failover-mon1 (clients=100)
+1780859341 22:09:01 LOAD START imaptest clients=100 for 80s
+1780859352 22:09:12 BEFORE quorum: "quorum_names":["mon1","mon2","mon3"]
+1780859352 22:09:12 INJECT  docker compose stop mon1 (1 of 3 mons)
+1780859354 22:09:14 RECOVERED mons responsive
+1780859355 22:09:15 AFTER  quorum: "quorum_names":["mon1","mon2","mon3"]
+1780859355 22:09:15 RESTORE docker compose start mon1
+1780859356 22:09:16 RECOVERED HEALTH_OK
+1780859376 22:09:36 STOP
+
+### mds-failover  (results/chaos/20260607-221022-mds-failover)
+1780859422 22:10:22 START mds-failover (clients=100)
+1780859422 22:10:22 LOAD START imaptest clients=100 for 90s
+1780859433 22:10:33 INJECT  stop active MDS = mds-b (standby should take over)
+1780859445 22:10:45 RECOVERED MDS active again
+1780859445 22:10:45 RESTORE docker compose start mds-b (rejoins as standby)
+1780859447 22:10:47 RECOVERED HEALTH_OK
+1780859467 22:11:07 STOP
+
+### mon-quorumloss  (results/chaos/20260607-221153-mon-quorumloss)
+1780859513 22:11:53 START mon-quorumloss (clients=100)
+1780859513 22:11:53 LOAD START imaptest clients=100 for 110s
+1780859523 22:12:03 INJECT  stop mon1 + mon2 (only 1/3 mons left -> NO quorum)
+1780859527 22:12:07 OUTAGE  holding no-quorum state ~30s (client I/O should stall)
+1780859557 22:12:37 RESTORE docker compose start mon1 (back to 2/3 quorum)
+1780859573 22:12:53 RECOVERED mons responsive
+1780859573 22:12:53 RECOVERED HEALTH_OK
+1780859593 22:13:13 STOP
+

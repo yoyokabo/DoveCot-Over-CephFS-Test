@@ -85,6 +85,10 @@ See [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) for a step-by-step explanation of
 every component and config file, and [docs/RESULTS.md](docs/RESULTS.md) for how
 to read the outputs.
 
+📊 **[docs/FINAL-REPORT.md](docs/FINAL-REPORT.md)** — the completed benchmark
+write-up: latency sweep tables (mdbox vs maildir), failure/recovery results,
+findings, and recommendations. Raw data in [docs/data/](docs/data/).
+
 ---
 
 ## Requirements
