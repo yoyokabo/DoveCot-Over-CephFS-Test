@@ -16,9 +16,15 @@ DC="docker compose"
 if [[ "${1:-}" == "--wipe" ]]; then
   echo "==> stopping and removing containers + volumes (full reset)"
   $DC --profile mail down -v --remove-orphans
-  # OSD data lives in host RAM under /dev/shm (bind-mounted); clear it too.
+  # OSD data lives in host RAM under /dev/shm (bind-mounted). The files are
+  # owned by the in-container 'ceph' user (uid 167), so a plain host `rm` hits
+  # permission denied — remove them from inside a throwaway root container that
+  # has /dev/shm mounted.
   echo "==> clearing RAM-backed OSD data in /dev/shm/ceph-osd*"
-  rm -rf /dev/shm/ceph-osd1 /dev/shm/ceph-osd2 /dev/shm/ceph-osd3 /dev/shm/ceph-osd4
+  CEPH_IMAGE="$(grep -E '^CEPH_IMAGE=' .env | cut -d= -f2)"
+  docker run --rm -v /dev/shm:/hostshm "${CEPH_IMAGE:-quay.io/ceph/ceph:v18}" \
+    rm -rf /hostshm/ceph-osd1 /hostshm/ceph-osd2 /hostshm/ceph-osd3 /hostshm/ceph-osd4 \
+    2>/dev/null || true
 else
   echo "==> stopping and removing containers (keeping data volumes)"
   $DC --profile mail down --remove-orphans
