@@ -31,6 +31,47 @@ can fail them independently. We bootstrap it by hand (not cephadm, which wants
 systemd+podman on real hosts) using the upstream `quay.io/ceph/ceph:v18` (Reef)
 image, which contains every Ceph binary.
 
+### Test architecture at a glance
+
+Everything runs in containers on one docker bridge network (`172.28.0.0/16`,
+static IPs). The arrows show the request path: imaptest drives Dovecot over IMAP;
+Dovecot reads/writes mail through a `ceph-fuse` mount of CephFS; CephFS metadata
+goes to the MDS and file data to the OSDs, replicated 3× across racks.
+
+```
+                          host: docker network 172.28.0.0/16
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │                                                                            │
+ │   ┌─────────┐   IMAP    ┌──────────────┐                                   │
+ │   │  bench  │──143────▶ │   dovecot     │   (Dovecot CE 2.3.16)            │
+ │   │ imaptest│  (load)   │  ceph-fuse mt │                                   │
+ │   │  (.61)  │           │    (.51)      │                                   │
+ │   └─────────┘           └──────┬───────┘                                   │
+ │                                │ CephFS (ceph-fuse, client.admin)          │
+ │                metadata ◀──────┼──────▶ data                               │
+ │                  ┌─────────────┴───┐        │                              │
+ │                  ▼                 ▼        ▼                              │
+ │            ┌──────────┐     ┌──────────────────────────────────────┐       │
+ │            │   MDS     │     │              OSDs (RAM/tmpfs)         │       │
+ │            │ mds-a act │     │  size=3, CRUSH failure domain = rack  │       │
+ │            │ mds-b stby│     │                                       │       │
+ │            └──────────┘     │  rack1   rack2   rack3   rack4(spare)  │       │
+ │                             │  osd1    osd2    osd3    osd4          │       │
+ │                             │  .31     .32     .33     .34           │       │
+ │                             └──────────────────────────────────────┘       │
+ │                                                                            │
+ │   control plane:  MON mon1/.11  mon2/.12  mon3/.13  (Paxos quorum)          │
+ │                   MGR mgr-a/.21 (active)  mgr-b/.22 (standby)               │
+ │   admin:          toolbox/.60  (ceph CLI + admin keyring; runs init+queries)│
+ │                                                                            │
+ │   chaos/*.sh (host) ── docker stop/start ──▶ any daemon  (fault injection)  │
+ │   measure-recovery.sh (host) ── ceph health every 2s ──▶ toolbox            │
+ └──────────────────────────────────────────────────────────────────────────┘
+
+  Replica placement (rack_replicated rule): every object → 3 copies in 3 distinct
+  racks; rack4 is spare capacity so a single OSD/rack loss self-heals onto it.
+```
+
 ### Daemons and why each count
 
 - **3 monitors** (`mon1`/`mon2`/`mon3`): hold the authoritative cluster maps and
