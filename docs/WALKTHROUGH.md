@@ -184,10 +184,27 @@ Auth uses a passwd-file with `auth_username_format = %Ln` so IMAP logins
 > `/usr/local`, and build the matching imaptest commit (≈Aug 2021) against that.
 
 `bench/gen-corpus.sh` builds the APPEND source mbox with a realistic size mix
-(~80% small 1–20 KB, ~20% large 50 KB–2 MB). `bench/run-imaptest.sh` runs one
+(~80% small 1–20 KB, ~20% large 50–512 KB). `bench/run-imaptest.sh` runs one
 client-count and parses imaptest's `ms/cmd avg` lines (columns:
 Logi List Stat Sele Fetc Fet2 Stor Dele Expu Appe Logo), averaging only the
 non-zero samples per command into a CSV row.
+
+**Command mix.** We use imaptest's **default profile** (no `profile=` file). Each
+of the N concurrent connections logs in and loops a randomised mix against its
+mailbox for the run duration. Per-command probabilities (from imaptest's output
+header):
+
+| Login | List | Status | Select | Fetch | Fetch2 | Store | Delete | Expunge | Append | Logout |
+|------:|-----:|-------:|-------:|------:|-------:|------:|-------:|--------:|-------:|-------:|
+| 100%  | 50%  | 50%    | 100%   | 100% (30%) | 100% | 50% (5%) | 100% | 100% | 100% | 100% |
+
+Fetch has a ~30% chance of a second-pass fetch (Fetch2) and Append a ~5%
+secondary variant (the parenthesised values). It is a deliberately **write-heavy
+"mailbox churn" mix** — Append/Delete/Expunge all ~100% — so each connection
+continuously adds and removes mail toward the `msgs≈50` target. That's why APPEND
+dominates the latency numbers and why the metadata commands (List/Status/Select)
+surface the maildir-vs-mdbox MDS-load difference. Treat it as a saturation/
+worst-case probe, not a model of average human IMAP usage.
 
 `scripts/run-benchmark.sh` orchestrates the **sweep**: for each format
 (mdbox, maildir) it restarts Dovecot in that format, builds the corpus, and runs

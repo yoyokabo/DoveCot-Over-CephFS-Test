@@ -44,6 +44,27 @@ All latencies below are **average ms per command** (imaptest `ms/cmd avg`, non-z
 samples). Each fault test records a shared-clock timeline of client latency + cluster
 health (`results/chaos/<ts>-<scenario>/`).
 
+### imaptest command mix
+
+We use imaptest's **default profile** (no custom `profile=` file). Each of the N
+concurrent connections logs in, works a randomised command mix against its mailbox, and
+loops for the run duration. The per-command probabilities (from imaptest's output header)
+are:
+
+| Login | List | Status | Select | Fetch | Fetch2 | Store | Delete | Expunge | Append | Logout |
+|------:|-----:|-------:|-------:|------:|-------:|------:|-------:|--------:|-------:|-------:|
+| 100%  | 50%  | 50%    | 100%   | 100% (30%) | 100% | 50% (5%) | 100% | 100% | 100% | 100% |
+
+- **Fetch** has a ~30% chance of a second-pass fetch (Fetch2); **Append** a ~5% secondary
+  variant — the parenthesised numbers.
+- This is a deliberately **write-heavy "mailbox churn" mix**: Append + Delete + Expunge all
+  fire ~100% of the time, so each connection continuously adds and removes mail, driving the
+  mailbox toward the `msgs≈50` target. That is why **APPEND dominates** the latency results
+  (write + index update + `fsync`, replicated 3×) and why metadata commands
+  (List/Status/Select) expose the **maildir vs mdbox** MDS-load difference.
+- It is a stress mix, not a model of average human IMAP usage (real users read far more than
+  they write); read it as a saturation/worst-case probe, not a duty-cycle estimate.
+
 ---
 
 ## 3. Latency sweep results
